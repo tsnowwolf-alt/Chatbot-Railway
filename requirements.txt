@@ -1,0 +1,22 @@
+# Interface do chatbot
+streamlit>=1.50
+
+# TENTATIVA 1 — API oficial do Gemini.
+# Usa o novo SDK unificado "google-genai" (import: `from google import genai`).
+# O pacote antigo "google-generativeai" foi descontinuado pelo Google em
+# 30/11/2025 — por isso não está listado aqui, mesmo sendo citado como opção
+# no pedido original.
+google-genai>=1.0
+
+# TENTATIVA 2 (OpenRouter) e TENTATIVA 3 (DeepSeek direto).
+# Ambos expõem uma API compatível com a da OpenAI, então o mesmo cliente
+# "openai" é reaproveitado para as duas chamadas — só muda a base_url e a
+# chave. Isso elimina a necessidade de "requests" cru para essas chamadas.
+openai>=1.50
+
+# Automação da API do GitHub (criação de repositório + upload dos arquivos).
+PyGithub>=2.1
+
+# Deploy automático no Railway via API pública GraphQL (POST simples — não
+# precisa de uma lib de GraphQL dedicada para as poucas mutations usadas aqui).
+requests>=2.31

@@ -1,0 +1,12 @@
+# Banco local de conversas (dados pessoais do usuário — não deve ir pro controle de versão)
+vibe_coding_chats.db
+
+# Segredos locais do Streamlit
+.streamlit/secrets.toml
+
+# Artefatos padrão do Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
