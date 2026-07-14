@@ -21,7 +21,12 @@ from typing import Optional
 
 from ai_cascade import ConfiguracaoModelos, ImagemAnexada, TodasCamadasFalharamError, gerar_codigo_com_fallback
 from file_parser import NenhumArquivoEncontradoError, extrair_arquivos
-from github_deployer import PublicacaoGithubError, atualizar_arquivos_no_github, garantir_railway_toml
+from github_deployer import (
+    PublicacaoGithubError,
+    atualizar_arquivos_no_github,
+    garantir_railway_toml,
+    obter_commit_sha_atual,
+)
 from prompts import montar_prompt_edicao
 from railway_deployer import PublicacaoRailwayError, ResultadoDeployRailway, redisparar_deploy
 
@@ -93,15 +98,21 @@ def aplicar_edicao(
     resultado_railway = None
     if info_railway and chaves.get("railway"):
         try:
+            # Busca o SHA do commit recém-criado — sem isso, o redeploy reusaria
+            # o commit ANTIGO e a edição nunca apareceria no ar (foi exatamente
+            # esse o bug relatado: edição ia pro GitHub certinho, mas o
+            # "redeploy" ignorava o commit novo). Ver a nota em redisparar_deploy.
+            commit_sha_edicao = obter_commit_sha_atual(chaves.get("github", ""), repo_full_name)
             resultado_railway = redisparar_deploy(
                 token=chaves["railway"],
                 project_id=info_railway["project_id"],
                 service_id=info_railway["service_id"],
                 environment_id=info_railway["environment_id"],
+                commit_sha=commit_sha_edicao,
                 on_status=avisar,
             )
             resultado_railway.url_app = info_railway.get("url_app") or resultado_railway.url_app
-        except PublicacaoRailwayError as erro:
+        except (PublicacaoRailwayError, PublicacaoGithubError) as erro:
             avisar(f"⚠️ Publiquei a edição no GitHub, mas não consegui redisparar o deploy: {erro}")
             return ResultadoEdicao(
                 sucesso=False,

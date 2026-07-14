@@ -33,7 +33,12 @@ from ai_cascade import ConfiguracaoModelos, ImagemAnexada, TodasCamadasFalharamE
 from auto_correcao import tentar_auto_correcao
 from edicao import aplicar_edicao
 from file_parser import NenhumArquivoEncontradoError, extrair_arquivos, sugerir_nome_repositorio
-from github_deployer import PublicacaoGithubError, garantir_railway_toml, publicar_no_github
+from github_deployer import (
+    PublicacaoGithubError,
+    garantir_railway_toml,
+    obter_commit_sha_atual,
+    publicar_no_github,
+)
 from railway_deployer import STATUS_FALHA, PublicacaoRailwayError, publicar_no_railway
 
 RAILWAY_URL = "https://railway.app"
@@ -354,14 +359,19 @@ def _executar_pipeline(
         resultado_correcao = None
         if chaves.get("railway"):
             try:
+                # Busca o SHA do commit que acabou de ser publicado, para
+                # mandar explicitamente pro Railway buildar ESSE commit (ver
+                # a nota em railway_deployer.redisparar_deploy/publicar_no_railway).
+                commit_sha_inicial = obter_commit_sha_atual(chaves["github"], resultado_github.full_name)
                 resultado_railway = publicar_no_railway(
                     token=chaves["railway"],
                     nome_projeto=resultado_github.nome_repositorio,
                     repositorio_github=resultado_github.full_name,
                     on_status=log,
                     tempo_maximo_espera_segundos=timeout_railway_segundos,
+                    commit_sha=commit_sha_inicial,
                 )
-            except PublicacaoRailwayError as erro:
+            except (PublicacaoRailwayError, PublicacaoGithubError) as erro:
                 erro_railway = str(erro)
                 log(f"⚠️ Deploy automático no Railway falhou: {erro}")
 

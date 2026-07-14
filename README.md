@@ -47,7 +47,8 @@ RAILWAY_TOKEN = "..."
 Se `RAILWAY_TOKEN` estiver configurado, depois de publicar no GitHub o app também:
 1. Cria um projeto novo no Railway (`projectCreate`).
 2. Cria um serviço ligado ao repositório recém-criado (`serviceCreate`).
-3. Dispara o build via Nixpacks (`serviceInstanceDeployV2`).
+3. Dispara o build via Nixpacks, **apontando explicitamente pro commit que acabou de subir**
+   (`serviceInstanceDeployV2` com `commitSha`).
 4. Gera o domínio público gratuito `*.up.railway.app` (`serviceDomainCreate`).
 5. Espera até 150s (configurável) o build terminar, só para confirmar o status.
 
@@ -56,7 +57,18 @@ não a CLI, para não depender de um binário externo no ambiente onde o Streaml
 `RAILWAY_TOKEN`, o app volta ao comportamento manual: um link para railway.app e instruções
 de "New Project → Deploy from GitHub repo".
 
-**Coisas que podem dar errado nessa etapa** (o app trata todas sem perder o trabalho já
+**⚠️ Detalhe de correção importante — `commitSha` não é opcional na prática.** A mutation
+`serviceInstanceDeployV2`, sem esse argumento, redisparar o deploy usando o commit que já
+estava associado ao serviço, **sem checar o GitHub por commits novos**. Isso já causou um bug
+real neste projeto: uma edição de estilo era publicada certinho no GitHub, o redeploy
+reportava sucesso, mas o site no ar continuava com o código antigo — porque o redeploy tinha
+rebuildado o commit de antes, não o novo. A correção: toda chamada de redeploy (auto-correção
+e edição) busca o SHA do commit recém-criado com `github_deployer.obter_commit_sha_atual()`
+logo depois de publicar, e manda esse SHA explicitamente. `railway_deployer.redisparar_deploy()`
+exige `commit_sha` como parâmetro obrigatório (sem valor padrão) exatamente para que essa classe
+de bug não volte a acontecer silenciosamente se um novo caminho de código esquecer de passá-lo.
+
+**Outras coisas que podem dar errado nessa etapa** (o app trata todas sem perder o trabalho já
 feito no GitHub):
 - **GitHub App do Railway sem acesso ao repo novo.** Se sua conta do Railway está com o
   GitHub App configurado para "Only select repositories", um repositório recém-criado por

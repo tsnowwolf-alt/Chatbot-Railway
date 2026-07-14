@@ -50,6 +50,32 @@ def garantir_railway_toml(arquivos: dict[str, str]) -> dict[str, str]:
     return arquivos
 
 
+def obter_commit_sha_atual(token: str, full_name: str) -> str:
+    """
+    Devolve o SHA do commit mais recente (HEAD) da branch padrão do repositório.
+
+    Isso existe por um motivo específico: a mutation serviceInstanceDeployV2 do
+    Railway, SEM o argumento commitSha, redisparar o deploy usando o commit que
+    já estava associado ao serviço — ela NÃO confere se há commits novos no
+    GitHub. Then, depois de atualizar_arquivos_no_github publicar uma correção
+    ou edição, é preciso buscar o SHA do commit que acabou de ser criado e
+    passá-lo explicitamente pro redeploy, ou o Railway builda o código antigo
+    de novo (foi exatamente esse o bug relatado: a edição ia pro GitHub certinho,
+    mas o "redeploy" ignorava o commit novo).
+    """
+    try:
+        cliente = Github(auth=Auth.Token(token))
+        repo = cliente.get_repo(full_name)
+        branch = repo.get_branch(repo.default_branch)
+        return branch.commit.sha
+    except GithubException as erro:
+        raise PublicacaoGithubError(
+            f"Não consegui descobrir o commit mais recente de '{full_name}' (HTTP {erro.status})."
+        ) from erro
+    except Exception as erro:
+        raise PublicacaoGithubError(f"Não consegui descobrir o commit mais recente de '{full_name}': {erro}") from erro
+
+
 def publicar_no_github(
     token: str,
     nome_repositorio: str,

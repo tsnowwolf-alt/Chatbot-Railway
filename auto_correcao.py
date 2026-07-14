@@ -21,7 +21,12 @@ from dataclasses import dataclass
 
 from ai_cascade import ConfiguracaoModelos, TodasCamadasFalharamError, gerar_codigo_com_fallback
 from file_parser import NenhumArquivoEncontradoError, extrair_arquivos
-from github_deployer import PublicacaoGithubError, atualizar_arquivos_no_github, garantir_railway_toml
+from github_deployer import (
+    PublicacaoGithubError,
+    atualizar_arquivos_no_github,
+    garantir_railway_toml,
+    obter_commit_sha_atual,
+)
 from prompts import montar_prompt_correcao
 from railway_deployer import (
     STATUS_FALHA,
@@ -141,6 +146,9 @@ def tentar_auto_correcao(
                 mensagem_commit=f"fix: auto-correção #{numero} após falha no deploy",
                 on_status=avisar,
             )
+            # Busca o SHA do commit recém-criado — sem isso, o redeploy do
+            # próximo passo reusaria o commit ANTIGO (ver nota em redisparar_deploy).
+            commit_sha_correcao = obter_commit_sha_atual(chaves.get("github", ""), repo_full_name)
         except PublicacaoGithubError as erro:
             avisar(f"⚠️ Não consegui publicar a correção no GitHub: {erro}")
             return ResultadoAutoCorrecao(
@@ -159,6 +167,7 @@ def tentar_auto_correcao(
                 project_id=resultado_railway.project_id,
                 service_id=resultado_railway.service_id,
                 environment_id=resultado_railway.environment_id,
+                commit_sha=commit_sha_correcao,
                 on_status=avisar,
             )
             resultado_railway.url_app = url_app  # a URL pública não muda entre redeploys

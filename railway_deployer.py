@@ -137,8 +137,8 @@ mutation serviceCreate($input: ServiceCreateInput!) {
 """
 
 _MUTATION_SERVICE_DEPLOY = """
-mutation serviceInstanceDeployV2($serviceId: String!, $environmentId: String!) {
-  serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId)
+mutation serviceInstanceDeployV2($serviceId: String!, $environmentId: String!, $commitSha: String) {
+  serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId, commitSha: $commitSha)
 }
 """
 
@@ -184,10 +184,19 @@ def publicar_no_railway(
     on_status: Optional[Callable[[str], None]] = None,
     tempo_maximo_espera_segundos: int = 150,
     intervalo_polling_segundos: int = 6,
+    commit_sha: Optional[str] = None,
 ) -> ResultadoDeployRailway:
     """
     Cria um projeto no Railway, liga um serviço ao repositório do GitHub recém-criado,
     dispara o build via Nixpacks e gera o domínio público — tudo via API, sem UI.
+
+    Args:
+        commit_sha: SHA do commit a buildar (ex.: de github_deployer.obter_commit_sha_atual).
+            Opcional aqui porque, na criação inicial, o serviceCreate já associa o
+            commit mais recente automaticamente — mas passar explicitamente
+            remove qualquer ambiguidade. Em um REDEPLOY (ver redisparar_deploy),
+            isso deixa de ser opcional na prática: sem isso, o Railway reusa o
+            commit antigo e ignora qualquer coisa nova publicada no GitHub.
 
     Raises:
         PublicacaoRailwayError: para qualquer falha em qualquer etapa. A mensagem
@@ -236,13 +245,18 @@ def publicar_no_railway(
             "(Settings do repo no GitHub → Integrations → Railway → conceder acesso)."
         )
 
-    # 3) Garante que um deploy seja disparado. O serviceCreate normalmente já
-    # dispara um automaticamente quando a origem é um repositório, mas essa
-    # chamada é uma rede de segurança — se já havia um em andamento, ela
-    # simplesmente falha/repete sem causar problema, então o erro é ignorado.
+    # 3) Garante que um deploy seja disparado, já apontando pro commit certo
+    # (ver a nota em commit_sha) — o serviceCreate normalmente já dispara um
+    # automaticamente quando a origem é um repositório, mas essa chamada é uma
+    # rede de segurança; se já havia um em andamento, ela simplesmente
+    # falha/repete sem causar problema, então o erro é ignorado.
     avisar("🏗️ Disparando o build (o Nixpacks detecta o railway.toml automaticamente)...")
     try:
-        _chamar_graphql(token, _MUTATION_SERVICE_DEPLOY, {"serviceId": service_id, "environmentId": environment_id})
+        _chamar_graphql(
+            token,
+            _MUTATION_SERVICE_DEPLOY,
+            {"serviceId": service_id, "environmentId": environment_id, "commitSha": commit_sha},
+        )
     except PublicacaoRailwayError as erro:
         avisar(f"   (aviso ignorável: {erro})")
 
@@ -323,23 +337,39 @@ def buscar_logs_deployment(token: str, deployment_id: str, limite: int = 300) ->
 
 
 # ---------------------------------------------------------------------------
-# Redeploy (usado pela auto-correção, depois de atualizar os arquivos no GitHub)
+# Redeploy (usado pela auto-correção e pela edição, depois de atualizar os
+# arquivos no GitHub)
 # ---------------------------------------------------------------------------
 def redisparar_deploy(
     token: str,
     project_id: str,
     service_id: str,
     environment_id: str,
+    commit_sha: str,
     on_status: Optional[Callable[[str], None]] = None,
     tempo_maximo_espera_segundos: int = 150,
     intervalo_polling_segundos: int = 6,
 ) -> ResultadoDeployRailway:
-    """Dispara um novo deploy num serviço já existente e espera o resultado —
-    usado depois que a auto-correção sobe uma versão corrigida no GitHub."""
+    """
+    Dispara um novo deploy num serviço já existente e espera o resultado —
+    usado depois que a auto-correção ou uma edição sobe uma versão nova no GitHub.
+
+    IMPORTANTE: commit_sha é obrigatório (não tem valor padrão) de propósito.
+    A mutation serviceInstanceDeployV2, sem esse argumento, redisparar o deploy
+    usando o commit que já estava associado ao serviço — SEM checar o GitHub por
+    commits novos. Passar o SHA do commit mais recente (via
+    github_deployer.obter_commit_sha_atual, chamado logo depois de subir os
+    arquivos) é o que garante que o Railway realmente builda o código atualizado,
+    em vez de re-buildar silenciosamente a versão antiga.
+    """
     avisar = on_status or (lambda _m: None)
 
-    avisar("🔁 Disparando um novo deploy com o código corrigido...")
-    _chamar_graphql(token, _MUTATION_SERVICE_DEPLOY, {"serviceId": service_id, "environmentId": environment_id})
+    avisar(f"🔁 Disparando um novo deploy com o commit `{commit_sha[:7]}`...")
+    _chamar_graphql(
+        token,
+        _MUTATION_SERVICE_DEPLOY,
+        {"serviceId": service_id, "environmentId": environment_id, "commitSha": commit_sha},
+    )
 
     status_final, deployment_id = _esperar_deployment(
         token=token,
